@@ -1,0 +1,52 @@
+-- ReplicatedStorage/AI/Attention.lua
+-- Tiny per-enemy threat tracker (who matters), with exponential decay.
+local Players = game:GetService("Players")
+local Attention = {}
+Attention.__index = Attention
+
+local function uidOf(actor) -- accepts Player or Model
+	if not actor then return nil end
+	if actor:IsA("Player") then return actor.UserId end
+	if actor:IsA("Model") then
+		local p = Players:GetPlayerFromCharacter(actor)
+		return p and p.UserId or actor:GetAttribute("UID") -- fallback if you tag models
+	end
+	return nil
+end
+
+function Attention.new(opts)
+	return setmetatable({
+		scores = {},                 -- [userId] = {score=, last=}
+		halfLife = (opts and opts.halfLife) or 1.7, -- seconds
+	}, Attention)
+end
+
+function Attention:note(userId, add)
+	if not userId then return end
+	local now = os.clock()
+	local slot = self.scores[userId] or { score = 0, last = now }
+	-- decay since last update
+	local dt = now - slot.last
+	local decay = math.exp(-dt / self.halfLife)
+	slot.score = slot.score * decay + (add or 0)
+	slot.last  = now
+	self.scores[userId] = slot
+end
+
+-- Public shorthands
+function Attention:Hit(actor, amount)        self:note(uidOf(actor), (amount or 10) / 10) end
+function Attention:BlockedBy(actor, g)       self:note(uidOf(actor), 0.8 + (g or 0)/20)   end
+function Attention:ParriedBy(actor)          self:note(uidOf(actor), 1.2)                 end
+function Attention:IntentNearby(actor)       self:note(uidOf(actor), 0.4)                 end
+function Attention:Proximity(actor, weight)  self:note(uidOf(actor), weight or 0.2)       end
+
+function Attention:primary(minThreshold)
+	minThreshold = minThreshold or 0.3
+	local bestId, bestScore = nil, minThreshold
+	for id, slot in pairs(self.scores) do
+		if slot.score > bestScore then bestId, bestScore = id, slot.score end
+	end
+	return bestId, bestScore
+end
+
+return Attention
