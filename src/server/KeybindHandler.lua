@@ -44,14 +44,16 @@ SetKeybindRF.OnServerInvoke = function(player, payload)
 end
 
 -- Return ONLY nodes that are unlockable AND the player owns
+-- Return ONLY nodes that are unlockable AND the player owns
 GetUnlockedNodesRF.OnServerInvoke = function(player)
-	local data = PlayerDataService.GetData(player)
-	local out = {}
-	for _, n in ipairs((data and data.Unlocks) or {}) do
-		if UNLOCKABLES_SET[n] then table.insert(out, n) end
-	end
-	table.sort(out)
-	return out
+  local data = PlayerDataService.GetData(player)
+  local out = {}
+  for _, n in ipairs((data and data.Unlocks) or {}) do
+    if UNLOCKABLES_SET[n] then table.insert(out, n) end
+  end
+  table.sort(out)
+  return out
 end
+
 
 return true

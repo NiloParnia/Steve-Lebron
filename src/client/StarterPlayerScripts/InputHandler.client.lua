@@ -126,26 +126,4 @@ UserInputService.InputEnded:Connect(function(input)
 		triggerAction("BlockEnd", 0) -- teardown bypasses gates in canAct("BlockEnd")
 	end
 end)
-local UIS = game:GetService("UserInputService")
-local RS  = game:GetService("ReplicatedStorage")
 
-local Remotes      = RS:WaitForChild("RemoteEvents")
-local ActivateNode = Remotes:WaitForChild("ActivateNode")
-
-local SUMMON_KEY   = Enum.KeyCode.H   -- pick whatever you want
-
--- Optional: only show tooltip if unlocked
-local function hasHorseUnlocked()
-	local player = game.Players.LocalPlayer
-	return player and player:GetAttribute("HasHorse") == true
-end
-
-UIS.InputBegan:Connect(function(input, gpe)
-	if gpe then return end
-	if input.KeyCode == SUMMON_KEY then
-		-- Fire regardless; server enforces unlock/cooldown
-		local cam = workspace.CurrentCamera
-		local dir = cam and cam.CFrame.LookVector or Vector3.new(0,0,-1)
-		ActivateNode:FireServer("SummonHorse", dir)
-	end
-end)
