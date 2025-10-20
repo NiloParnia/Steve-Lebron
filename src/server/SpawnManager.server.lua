@@ -23,14 +23,39 @@ local function pickLook(prefabName: string)
 	return list[math.random(1, #list)]
 end
 
-local function pivotAndFace(rig: Model, cf: CFrame)
-	-- Use PivotTo so HRP + full model follows
-	if rig and rig.PrimaryPart then
-		rig:PivotTo(cf)
-	else
-		-- fallback: try to set PrimaryPart
-		local hrp = rig:FindFirstChild("HumanoidRootPart")
-		if hrp then rig.PrimaryPart = hrp end
+-- Helper: accept Folder or Model; find a Model and ensure PrimaryPart before pivot
+local function findModelWithRoot(container)
+    if container:IsA("Model") then return container end
+    if container:IsA("Folder") then
+        for _,child in ipairs(container:GetChildren()) do
+            if child:IsA("Model") then return child end
+        end
+    end
+    return nil
+end
+
+local function pivotAndFace(inst, cf)
+    local mdl = findModelWithRoot(inst)
+    if not mdl then
+        warn("[Spawner] No model found to pivot for", inst:GetFullName())
+        return
+    end
+    if not mdl.PrimaryPart then
+        local hrp = mdl:FindFirstChild("HumanoidRootPart", true)
+        if hrp and hrp:IsA("BasePart") then
+            mdl.PrimaryPart = hrp
+        else
+            for _,d in ipairs(mdl:GetDescendants()) do
+                if d:IsA("BasePart") then mdl.PrimaryPart = d; break end
+            end
+        end
+    end
+    if not mdl.PrimaryPart then
+        warn("[Spawner] No PrimaryPart in model", mdl:GetFullName())
+        return
+    end
+    mdl:PivotTo(cf)
+end
 		rig:PivotTo(cf)
 	end
 end
@@ -145,3 +170,4 @@ if ENEMY_LEASHES then
 		end
 	end
 end
+

@@ -1,17 +1,21 @@
 -- src/server/GameInit.server.lua
--- Creates remotes, wires player load/unload, boots story + keybind systems.
+-- Boot order: (1) create remotes, (2) create scaffolding folders, (3) non-blocking requires, (4) player lifecycle, (5) story/keybind systems.
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SSS               = game:GetService("ServerScriptService")
 
-local sss               = script.Parent
-local PlayerDataService = require(sss:WaitForChild("PlayerDataService"))
-local NodeManager       = require(ReplicatedStorage:WaitForChild("NodeManager"))
+local function logWarn(...)
+	warn("[GameInit]", ...)
+end
 
--- Remote bootstrap -----------------------------------------------------------
-local remotes = ReplicatedStorage:FindFirstChild("RemoteEvents") or Instance.new("Folder")
-remotes.Name = "RemoteEvents"
-remotes.Parent = ReplicatedStorage
+-- 1) REMOTES FIRST -----------------------------------------------------------
+local remotes = ReplicatedStorage:FindFirstChild("RemoteEvents")
+if not remotes then
+	remotes = Instance.new("Folder")
+	remotes.Name = "RemoteEvents"
+	remotes.Parent = ReplicatedStorage
+end
 
 local function ensureRemote(name)
 	local ev = remotes:FindFirstChild(name)
@@ -33,7 +37,7 @@ local function ensureRemoteFunction(name)
 	return rf
 end
 
--- Events used elsewhere
+-- Events used elsewhere (NPCs/UI expect these early)
 ensureRemote("ActivateNode")
 ensureRemote("UnlockNode")
 ensureRemote("NodeActions")
@@ -45,36 +49,92 @@ ensureRemote("BeginDialogue")
 ensureRemote("ChooseOption")
 ensureRemote("DialogueUpdate")
 
--- Keybind RemoteFunctions
+-- RFs for keybinds
 ensureRemoteFunction("GetKeybinds")
 ensureRemoteFunction("SetKeybind")
 ensureRemoteFunction("GetUnlockedNodes")
 
--- Story scaffolding folders (don’t rely on Studio placement)
-local storyAllow = ReplicatedStorage:FindFirstChild("StoryUnlockables") or Instance.new("Folder", ReplicatedStorage)
-storyAllow.Name = "StoryUnlockables"
-local stories = ReplicatedStorage:FindFirstChild("Stories") or Instance.new("Folder", ReplicatedStorage)
-stories.Name = "Stories"
+-- 2) SCAFFOLD FOLDERS --------------------------------------------------------
+local storyAllow = ReplicatedStorage:FindFirstChild("StoryUnlockables")
+if not storyAllow then
+	storyAllow = Instance.new("Folder")
+	storyAllow.Name = "StoryUnlockables"
+	storyAllow.Parent = ReplicatedStorage
+end
 
--- Player lifecycle -----------------------------------------------------------
-Players.PlayerAdded:Connect(function(player)
-	local profile = PlayerDataService.WaitForProfile(player, 10)
-	if not profile then
-		warn("[GameInit] Profile failed to load for", player.Name)
-		return
+local stories = ReplicatedStorage:FindFirstChild("Stories")
+if not stories then
+	stories = Instance.new("Folder")
+	stories.Name = "Stories"
+	stories.Parent = ReplicatedStorage
+end
+
+-- 3) NON-BLOCKING REQUIRES ---------------------------------------------------
+local PlayerDataService
+do
+	local mod = SSS:FindFirstChild("PlayerDataService")
+	if not mod then
+		logWarn("Missing ServerScriptService.PlayerDataService (will degrade gracefully)")
+	else
+		local ok, res = pcall(function() return require(mod) end)
+		if not ok then
+			logWarn("PlayerDataService require failed:", res)
+		else
+			PlayerDataService = res
+		end
 	end
-	NodeManager.LoadUnlocked(player, profile)
+end
+
+local NodeManager
+do
+	local mod = ReplicatedStorage:FindFirstChild("NodeManager")
+	if not mod then
+		logWarn("Missing ReplicatedStorage.NodeManager (unlocks may not load)")
+	else
+		local ok, res = pcall(function() return require(mod) end)
+		if not ok then
+			logWarn("NodeManager require failed:", res)
+		else
+			NodeManager = res
+		end
+	end
+end
+
+-- 4) PLAYER LIFECYCLE --------------------------------------------------------
+Players.PlayerAdded:Connect(function(player)
+	if PlayerDataService and PlayerDataService.WaitForProfile then
+		local profile = PlayerDataService.WaitForProfile(player, 10)
+		if not profile then
+			logWarn("Profile failed to load for", player.Name)
+			return
+		end
+		if NodeManager and NodeManager.LoadUnlocked then
+			NodeManager.LoadUnlocked(player, profile)
+		end
+	else
+		logWarn("PlayerDataService/NodeManager not ready; skipping unlock load for", player.Name)
+	end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
-	NodeManager.Unload(player)
+	if NodeManager and NodeManager.Unload then
+		NodeManager.Unload(player)
+	end
 end)
 
--- Boot story/keybind systems -------------------------------------------------
-require(sss:WaitForChild("StoryDataService"))
-require(sss:WaitForChild("StoryUnlockHandler"))
-require(sss:WaitForChild("StoryDialogueHandler"))
-require(sss:WaitForChild("StoryUnlockables")) -- list/allow rules
-require(sss:WaitForChild("KeybindHandler"))
+-- 5) STORY/KEYBIND SYSTEMS ---------------------------------------------------
+local function saferequire(where, name)
+	local inst = where:FindFirstChild(name)
+	if not inst then logWarn("Missing", where.Name .. "." .. name); return end
+	local ok, err = pcall(require, inst)
+	if not ok then logWarn("Require failed for", name, ":", err) end
+end
 
+saferequire(SSS, "StoryDataService")
+saferequire(SSS, "StoryUnlockHandler")
+saferequire(SSS, "StoryDialogueHandler")
+saferequire(SSS, "StoryUnlockables") -- module listing unlock rules; not the RS folder
+saferequire(SSS, "KeybindHandler")
+
+print("[GameInit] Boot complete.")
 return true

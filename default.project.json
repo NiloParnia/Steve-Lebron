@@ -1,35 +1,31 @@
-﻿{
+{
   "name": "Steve-Lebron",
   "tree": {
     "$className": "DataModel",
-
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
+      "$path": "src/shared",
       "AI":          { "$path": "src/shared/AI" },
       "Horses":      { "$path": "src/shared/Horses" },
       "NodeModules": { "$path": "src/shared/NodeModules" },
       "Stories":     { "$path": "src/shared/Stories" },
       "Unlockables": { "$path": "src/shared/Unlockables" }
     },
-
     "ServerScriptService": {
       "$className": "ServerScriptService",
       "$path": "src/server"
     },
-
     "ServerStorage": {
       "$className": "ServerStorage",
-      "Enemies":        { "$path": "src/serverstorage/Enemies" },
-      "NPCs":           { "$path": "src/serverstorage/NPCs" },
-      "RBX_ANIMSAVES":  { "$path": "src/serverstorage/RBX_ANIMSAVES" }
+      "Enemies":       { "$path": "src/serverstorage/Enemies" },
+      "NPCs":          { "$path": "src/serverstorage/NPCs" },
+      "RBX_ANIMSAVES": { "$path": "src/serverstorage/RBX_ANIMSAVES" }
     },
-
     "StarterPlayer": {
       "$className": "StarterPlayer",
-      "StarterPlayerScripts":     { "$path": "src/client/StarterPlayerScripts" },
-      "StarterCharacterScripts":  { "$path": "src/client/StarterCharacterScripts" }
+      "StarterPlayerScripts":    { "$path": "src/client/StarterPlayerScripts" },
+      "StarterCharacterScripts": { "$path": "src/client/StarterCharacterScripts" }
     },
-
     "StarterGui": {
       "$className": "StarterGui",
       "ScreenGui": { "$path": "src/client/StarterGui/ScreenGui" }
