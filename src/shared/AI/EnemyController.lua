@@ -3,15 +3,72 @@ local Players     = game:GetService("Players")
 local RS          = game:GetService("ReplicatedStorage")
 local RunService  = game:GetService("RunService")
 
-local Attention   = require(RS:WaitForChild("AI"):WaitForChild("Attention"))
-local Blackboard  = require(RS:WaitForChild("AI"):WaitForChild("Blackboard"))
-local NodeSense   = require(RS:WaitForChild("NodeSense"))
+-- --- safe require helpers ----------------------------------------------------
+local function requireOrStub(getter, stubFactory)
+	local ok, mod = pcall(getter)
+	if ok and type(mod) == "table" then return mod end
+	return stubFactory()
+end
 
--- Optional NodeLibrary adapter
+local Attention = requireOrStub(function()
+	return require(RS:WaitForChild("AI"):WaitForChild("Attention"))
+end, function()
+	local A = {}
+	function A.new()
+		local o = {}
+		function o:Hit() end
+		function o:BlockedBy() end
+		function o:ParriedBy() end
+		function o:primary() return nil end
+		return o
+	end
+	return A
+end)
+
+local Blackboard = requireOrStub(function()
+	return require(RS:WaitForChild("AI"):WaitForChild("Blackboard"))
+end, function()
+	local B = {}
+	function B.new()
+		local self = { _vals = {} }
+		function self:set(key, val, ttl)
+			if ttl and ttl > 0 then
+				self._vals[key] = { v = val, exp = os.clock() + ttl }
+			else
+				self._vals[key] = { v = val, exp = nil }
+			end
+		end
+		function self:get(key)
+			local e = self._vals[key]
+			if not e then return nil end
+			if e.exp and os.clock() > e.exp then
+				self._vals[key] = nil; return nil
+			end
+			return e.v
+		end
+		return self
+	end
+	return B
+end)
+
+local NodeSense = requireOrStub(function()
+	return require(RS:WaitForChild("NodeSense"))
+end, function()
+	local N = {}
+	function N.Emit(...) end
+	N.ServerEvent = { Event = { Connect = function() return { Disconnect = function() end } end } }
+	return N
+end)
+
+-- Server-only NodeLibrary adapter (client never requires SSS)
 local NL
-do
-	local libScript = game.ServerScriptService:FindFirstChild("NodeLibrary") or RS:FindFirstChild("NodeLibrary")
-	if libScript then NL = require(libScript) end
+if RunService:IsServer() then
+	local SSS = game:GetService("ServerScriptService")
+	local lib = SSS:FindFirstChild("NodeLibrary")
+	if lib then
+		local ok, mod = pcall(require, lib)
+		if ok and type(mod) == "table" then NL = mod end
+	end
 end
 
 -- === Moves (with NPC dodge fallback) ========================================
@@ -107,7 +164,6 @@ local function clearIncoming(self)
 	self.board:set("rangedThreat",         false, 0.2)
 end
 
--- Treat any “breaks block” as an unblockable-level danger for dodge logic.
 local function interpretIntent(self, node, tags, closeEnough)
 	if not closeEnough then return end
 	local lower = (node or "Unknown"):lower()
@@ -170,16 +226,13 @@ local function interpretSense(self, payload)
 		end
 	end
 
-	-- Intent (treat nil outcome and "AttackStart" as intent)
 	if (not outcome and closeEnough) or outcome == "AttackStart" then
 		interpretIntent(self, node, tags, closeEnough)
 	end
-	-- Clear intent on AttackEnd
 	if outcome == "AttackEnd" then
 		clearIncoming(self)
 	end
 
-	-- Defensive state echoes
 	if outcome == "BlockStart" then
 		self.board:set("blocking", true, 0.9)
 	elseif outcome == "BlockEnd" then
@@ -202,10 +255,9 @@ function Controller.Start(rig: Model, spec: table)
 		board = Blackboard.new(),
 		lastJump = 0,
 		lastActionAt = 0,
-		lastDodgeAt = -1,          -- local dodge cooldown
+		lastDodgeAt = -1,
 		isBlocking = false,
 		connections = {},
-		-- preferred distance band (don’t stand on top)
 		rangeInner = 4.4,
 		rangeKeep  = 4.5,
 		rangeOuter = 4.6,
@@ -253,6 +305,9 @@ function Controller.Stop(self)
 end
 
 -- === target & movement helpers =============================================
+local function hrpOf(m) return m and m:FindFirstChild("HumanoidRootPart") end
+local function humOf(m) return m and m:FindFirstChildOfClass("Humanoid") end
+
 function Controller:_acquireTarget()
 	local uid = self.attention:primary(0.3)
 	if uid then
@@ -268,7 +323,7 @@ function Controller:_acquireTarget()
 		local ch = plr.Character; local hrp = ch and hrpOf(ch)
 		local hum = ch and humOf(ch)
 		if hum and hum.Health > 0 and hrp then
-			local d = dist(myHRP.Position, hrp.Position)
+			local d = (myHRP.Position - hrp.Position).Magnitude
 			if d < bd then best, bd = ch, d end
 		end
 	end
@@ -278,31 +333,29 @@ end
 function Controller:_withinLeash()
 	local p = hrpOf(self.rig); if not p then return true end
 	local center = self.leashPart and self.leashPart.Position or self.homeCF.Position
-	return dist(p.Position, center) <= (self.leashR + 5)
+	return (p.Position - center).Magnitude <= (self.leashR + 5)
 end
 
-function Controller:_moveTo(pos) local h = humOf(self.rig); if h then h:MoveTo(pos) end end
+function Controller:_moveTo(pos)
+	local h = humOf(self.rig)
+	if h then h:MoveTo(pos) end
+end
 
--- keep a ring around the target; never stand on top
 function Controller:_approachInBand(thrp)
 	local myHRP = hrpOf(self.rig); if not (myHRP and thrp) then return end
 	local myPos, tPos = myHRP.Position, thrp.Position
-	local d  = dist(myPos, tPos)
-	local dv = dir(tPos, myPos) -- vector from target → me
+	local d  = (myPos - tPos).Magnitude
+	local dv = (tPos - myPos); dv = dv.Magnitude > 0 and (dv.Unit) or dv
 
 	if d > self.rangeOuter then
-		-- approach, but stop at keep distance (do not MoveTo target directly)
-		local dest = tPos + (-dir(tPos, myPos)) * self.rangeKeep
+		local dest = tPos + (-dv) * self.rangeKeep
 		self:_moveTo(dest)
 	elseif d < self.rangeInner then
-		-- too close → step back a little (spacing only; no dodge)
-		local retreat = myPos + dv * (self.rangeInner - d + 1.0)
+		local retreat = myPos + (myPos - tPos).Unit * (self.rangeInner - d + 1.0)
 		self:_moveTo(retreat)
 	end
-	-- if inside the band, no MoveTo → we can attack/strafe
 end
 
--- local dodge cooldown (used only for danger-dodge)
 function Controller:_tryDodgeAway(thrpPos)
 	local now = os.clock()
 	if (now - (self.lastDodgeAt or -1)) < 1.25 then return false end
@@ -317,7 +370,6 @@ function Controller._tick(self, dt)
 	local myHRP = hrpOf(rig); local hum = humOf(rig)
 	if not myHRP or not hum or hum.Health <= 0 then return end
 
-	-- leash
 	if not self:_withinLeash() then
 		local homePos = (self.leashPart and self.leashPart.Position) or self.homeCF.Position
 		self:_moveTo(homePos)
@@ -331,16 +383,14 @@ function Controller._tick(self, dt)
 	end
 	local thrp = hrpOf(target); if not thrp then return end
 
-	local d = dist(myHRP.Position, thrp.Position)
+	local d = (myHRP.Position - thrp.Position).Magnitude
 	local now = os.clock()
 
-	-- soft hop only when far (prevents “jump on head” near)
 	if d > 10 and now - self.lastJump > lerp(1.5, 3.5, 1 - clamp01(self.OFF/100)) then
 		hum.Jump = true
 		self.lastJump = now
 	end
 
-	-- read board
 	local blocking        = self.board:get("blocking") == true
 	local parryWindow     = self.board:get("parryWindow") == true
 	local incomingHeavy   = self.board:get("incomingHeavy") == true
@@ -349,7 +399,7 @@ function Controller._tick(self, dt)
 	local rangedThreat    = self.board:get("rangedThreat") == true
 	local recentlyBlocked = (self.board:get("recentlyBlockedAt") ~= nil)
 
-	-- === DODGE POLICY: ONLY on dangerous threats (Unblockable or Heavy) ===
+	-- DODGE: only on dangerous threats
 	if incomingUnblk or incomingHeavy then
 		if math.random() < dodgeProbByDEF(self.DEF) then
 			task.delay(reactDelayByDEF(self.DEF), function()
@@ -372,21 +422,18 @@ function Controller._tick(self, dt)
 		end
 	end
 
-	-- maintain distance band while waiting for tempo
 	local gap = tempoGapByOFF(self.OFF)
 	if now - self.lastActionAt < gap then
 		self:_approachInBand(thrp)
 		return
 	end
 
-	-- ranged pressure when far / during enemy parry
 	if parryWindow or d > 14 or rangedThreat then
 		Moves.Revolver(rig, dir(myHRP.Position, thrp.Position))
 		self.lastActionAt = now
 		return
 	end
 
-	-- punish blockers
 	if (blocking or recentlyBlocked) and d <= 7 then
 		if math.random() < lerp(0.2, 0.8, clamp01(self.OFF/100)) then
 			Moves.Heavy(rig)
@@ -395,16 +442,12 @@ function Controller._tick(self, dt)
 		end
 	end
 
-	-- keep band, then attack
 	self:_approachInBand(thrp)
 
-	-- if outside inner band, we can choose to close one step before M1
 	if d > self.rangeOuter then
-		-- approach already handled above; wait a frame
 		return
 	end
 
-	-- M1 burst (no automatic dodge-out anymore)
 	local len = math.max(2, math.min(5, comboLenByOFF(self.OFF)))
 	for i=1,len do
 		if parryWindow then break end
