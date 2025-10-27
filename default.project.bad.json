@@ -33,8 +33,8 @@
     },
 
     "StarterGui": {
-      "$className": "StarterGui"
-      // no ScreenGui mapping here; Studio's ScreenGui remains untouched
+      "$className": "StarterGui",
+      "ScreenGui": { "$path": "src/client/StarterGui/ScreenGui" }
     }
   }
 }
