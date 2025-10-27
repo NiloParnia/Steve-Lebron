@@ -1,0 +1,10 @@
+# Rojo/Roblox build artifacts
+_build/
+*.rbxlx
+*.rbxl
+*.rbxm
+*.rbxmx
+
+# Local snapshots/backups
+_snapshot/
+default.project.bad.json

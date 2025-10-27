@@ -34,7 +34,6 @@
 
     "StarterGui": {
       "$className": "StarterGui"
-      // no ScreenGui mapping here; Studio's ScreenGui remains untouched
     }
   }
 }
