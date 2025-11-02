@@ -21,8 +21,6 @@
 
     "ServerStorage": {
       "$className": "ServerStorage",
-      "Enemies":       { "$path": "src/serverstorage/Enemies" },
-      "NPCs":          { "$path": "src/serverstorage/NPCs" },
       "RBX_ANIMSAVES": { "$path": "src/serverstorage/RBX_ANIMSAVES" }
     },
 
