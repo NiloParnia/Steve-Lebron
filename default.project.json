@@ -1,33 +1,26 @@
 {
-  "name": "Steve-Lebron",
-  "tree": {
-    "$className": "DataModel",
-
-    "ReplicatedStorage": {
-      "$className": "ReplicatedStorage",
-      "$path": "src/shared",
-
-      "AI":          { "$path": "src/shared/AI" },
-      "Horses":      { "$path": "src/shared/Horses" },
-      "NodeModules": { "$path": "src/shared/NodeModules" },
-      "Stories":     { "$path": "src/shared/Stories" },
-      "Unlockables": { "$path": "src/shared/Unlockables" }
-    },
-
-    "ServerScriptService": {
-      "$className": "ServerScriptService",
-      "$path": "src/server"
-    },
-
-    "ServerStorage": {
-      "$className": "ServerStorage",
-      "RBX_ANIMSAVES": { "$path": "src/serverstorage/RBX_ANIMSAVES" }
-    },
-
-    "StarterPlayer": {
-      "$className": "StarterPlayer",
-      "StarterPlayerScripts":    { "$path": "src/client/StarterPlayerScripts" },
-      "StarterCharacterScripts": { "$path": "src/client/StarterCharacterScripts" }
-    }
-  }
+    "name":  "Steve-Lebron",
+    "tree":  {
+                 "$className":  "DataModel",
+                 "$ignoreUnknownInstances":  true,
+                 "ReplicatedStorage":  {
+                                           "$className":  "ReplicatedStorage",
+                                           "$ignoreUnknownInstances":  true
+                                       },
+                 "ServerScriptService":  {
+                                             "$className":  "ServerScriptService",
+                                             "$ignoreUnknownInstances":  true,
+                                             "$path":  "src/server"
+                                         },
+                 "StarterPlayer":  {
+                                       "$className":  "StarterPlayer",
+                                       "$ignoreUnknownInstances":  true,
+                                       "StarterPlayerScripts":  {
+                                                                    "$path":  "src/client/StarterPlayerScripts"
+                                                                },
+                                       "StarterCharacterScripts":  {
+                                                                       "$path":  "src/client/StarterCharacterScripts"
+                                                                   }
+                                   }
+             }
 }
