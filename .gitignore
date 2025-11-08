@@ -8,3 +8,6 @@ _build/
 # Local snapshots/backups
 _snapshot/
 default.project.bad.json
+!_snapshot/
+!_snapshot/*.md
+!_snapshot/*.txt
